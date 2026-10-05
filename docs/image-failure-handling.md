@@ -8,9 +8,17 @@
 
 ## 文本结果与失败
 
-HTTP 400 的图片结果被分类为文本结果：`content_policy_violation`、`invalid_image_input`、`upstream_text_reply` 和 `unsupported_model`。这类结果会保留可展示的上游文本，不将账号切换或账号记失败。
+HTTP 400 的图片结果被分类为文本结果：`content_policy_violation`、`invalid_image_input`、`upstream_text_reply` 和 `unsupported_model`。这类结果会保留可展示的上游文本，默认不切换账号、不计账号失败。
+
+例外是两段明确把责任指向账号的图片工具文本：命中「图片生成工具触发了生成频率限制」归为 `image_tool_rate_limited`，命中「由于我这边发生了错误，我未能生成图片」归为 `image_tool_upstream_error`。两者对外仍是 400 文本结果（`outcome` 不变、上游文本照原样返回），但通过 `FailurePolicy.switch_account` 与 `FailurePolicy.cooldown` 显式声明：当前请求可以立刻切换其他账号重试，触发账号同时进入图片冷却。识别由 `classify_image_tool_text` 统一完成，覆盖终态 assistant 文本与上游真实 HTTP 400 响应体，并按空白归一化后匹配，上游插入换行不影响结果；结构化 400 错误码优先于文本匹配。
 
 其他 `ImageFailure` 的 `outcome` 是失败，允许执行账号切换与账号验证流程。是否实际切换还取决于账号池、尝试上限和当前设置；分类对象只给出一致的切换资格，不保证一定能找到下一个账号。
+
+## 账号冷却
+
+冷却是否发生由 `ImageFailure.cooldown` 声明，时长由设置 `image_account_cooldown_minutes` 决定（默认 6 分钟，最小 0，填 0 表示不冷却），由 `AccountService.mark_image_result` 这条图片结果回写的权威入口写入账号的 `image_cooldown_until`；重复触发只延长、不缩短已有截止时间。
+
+冷却只作用于图片候选池：`AccountService._is_image_account_cooling_down` 在 `_list_ready_candidate_tokens` 与 `get_available_access_token` 的预检后复查处过滤。它刻意不改动 `_is_image_account_available`，因此冷却中的账号保持控制台的可用投影，也不会从图片模型目录里消失，文本等其他能力的取号完全不受影响。冷却到期由时间戳自动失效，无需后台清理。控制台账号行通过 `image_cooldown_at`、`image_cooldown_active` 和 `image_cooldown_reason` 展示冷却状态与恢复时刻。
 
 常见类别包括：
 

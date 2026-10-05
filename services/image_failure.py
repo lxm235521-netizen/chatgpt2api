@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -18,6 +19,11 @@ class FailurePolicy:
     status_code: int
     error_type: str
     verify_account: bool = False
+    # None keeps the historical rule (any non-text outcome may switch accounts).
+    # An explicit value lets a text outcome switch accounts too.
+    switch_account: bool | None = None
+    # Marks failures that must also cool the triggering account down.
+    cooldown: bool = False
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,8 @@ class ImageFailure:
     verify_account: bool = False
     raw_detail: Any = field(default=None, compare=False, repr=False)
     public_detail: str = field(default="", compare=False, repr=False)
+    switch_account_override: bool | None = None
+    cooldown: bool = False
 
     @property
     def outcome(self) -> str:
@@ -39,6 +47,8 @@ class ImageFailure:
 
     @property
     def switch_account(self) -> bool:
+        if self.switch_account_override is not None:
+            return self.switch_account_override
         return self.outcome == "failure"
 
     @property
@@ -127,6 +137,18 @@ FAILURE_POLICIES: dict[str, FailurePolicy] = {
     ),
     "upstream_text_reply": FailurePolicy(
         "request", None, False, 400, "invalid_request_error",
+    ),
+    # Upstream answers HTTP 400 with a readable text that names an image-tool
+    # rate limit or an upstream-side error. Those two texts are attributable to
+    # the account: keep the 400 text outcome for callers, but allow the account
+    # switch and cool the triggering account down.
+    "image_tool_rate_limited": FailurePolicy(
+        "account", "image_generation", False, 400, "rate_limit_error",
+        verify_account=True, switch_account=True, cooldown=True,
+    ),
+    "image_tool_upstream_error": FailurePolicy(
+        "account", "image_generation", False, 400, "server_error",
+        verify_account=True, switch_account=True, cooldown=True,
     ),
     "no_image_generated": FailurePolicy(
         "request", None, False, 502, "server_error",
@@ -232,7 +254,51 @@ def image_failure(
         error_type=policy.error_type,
         verify_account=policy.verify_account,
         raw_detail=raw_detail,
+        switch_account_override=policy.switch_account,
+        cooldown=policy.cooldown,
     )
+
+
+# Upstream texts that stay HTTP 400 but are attributable to the account. Every
+# fragment of a group must appear in the whitespace-normalized text, so upstream
+# line breaks and spacing do not change the result.
+IMAGE_TOOL_TEXT_TRIGGERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("image_tool_rate_limited", ("图片生成工具触发了生成频率限制",)),
+    ("image_tool_upstream_error", ("由于我这边发生了错误", "未能生成图片")),
+)
+
+
+def _collapse_whitespace(value: str) -> str:
+    return re.sub(r"\s+", "", value or "")
+
+
+def _readable_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    return _safe_public_text(value)
+
+
+def classify_image_tool_text(value: Any) -> ImageFailure | None:
+    """Classify upstream image-tool texts that the account owns despite HTTP 400."""
+    normalized = _collapse_whitespace(_readable_text(value))
+    if not normalized:
+        return None
+    for code, fragments in IMAGE_TOOL_TEXT_TRIGGERS:
+        if all(_collapse_whitespace(fragment) in normalized for fragment in fragments):
+            return image_failure(code, raw_detail=value).with_public_detail(_readable_text(value))
+    return None
+
+
+IMAGE_TOOL_TEXT_FAILURE_CODES = frozenset(code for code, _ in IMAGE_TOOL_TEXT_TRIGGERS)
+
+# Every failure code produced by terminal assistant text. Callers that decide
+# whether terminal text counts as an image failure, or that hide that text from
+# diagnostics, must ask this predicate instead of naming one code.
+TERMINAL_TEXT_FAILURE_CODES = frozenset({"upstream_text_reply"}) | IMAGE_TOOL_TEXT_FAILURE_CODES
+
+
+def is_terminal_text_failure_code(value: Any) -> bool:
+    return str(value or "").strip().lower() in TERMINAL_TEXT_FAILURE_CODES
 
 
 IMAGE_TIMEOUT_PUBLIC_MESSAGE = "Image generation timed out. Please try again."
@@ -242,6 +308,8 @@ IMAGE_QUOTA_PUBLIC_MESSAGE = "No image generation quota is currently available."
 _PUBLIC_RAW_DETAIL_CODES = frozenset({
     "content_policy_violation",
     "image_quota_exhausted",
+    "image_tool_rate_limited",
+    "image_tool_upstream_error",
     "invalid_image_input",
     "no_image_generated",
     "upstream_rate_limited",
@@ -251,6 +319,8 @@ _PUBLIC_RAW_DETAIL_CODES = frozenset({
 
 _DIRECT_PUBLIC_TEXT_CODES = frozenset({
     "content_policy_violation",
+    "image_tool_rate_limited",
+    "image_tool_upstream_error",
     "invalid_image_input",
     "upstream_text_reply",
     "unsupported_model",
@@ -471,7 +541,7 @@ def _failure_priority(code: str) -> int:
         return 8
     if normalized in {"image_quota_exhausted", "insufficient_quota"}:
         return 7
-    if normalized in {"file_upload_throttled", "upstream_rate_limited"}:
+    if normalized in {"file_upload_throttled", "upstream_rate_limited", "image_tool_rate_limited"}:
         return 6
     if normalized == "image_download_failed":
         return 5
@@ -547,12 +617,18 @@ def classify_upstream_http_error(exc: UpstreamHTTPError) -> ImageFailure:
     # The real HTTP status owns the text/failure boundary. Structured fields
     # may refine the reason, but must never turn a non-400 response into text
     # or turn a real 400 response into an account failure.
+    # Documented exception: the image-tool texts that name an upstream rate
+    # limit or an upstream-side error keep the 400 text outcome for callers,
+    # while the account stays attributable, so execution may switch accounts and
+    # cool the triggering account down.
     if status_code == 400:
-        failure = (
-            structured_failure
-            if structured_failure is not None and structured_failure.status_code == 400
-            else image_failure("invalid_image_input", raw_detail=exc.body)
-        )
+        if structured_failure is not None and structured_failure.status_code == 400:
+            failure = structured_failure
+        else:
+            failure = classify_image_tool_text(exc.body) or image_failure(
+                "invalid_image_input",
+                raw_detail=exc.body,
+            )
         if credential_scope != "account":
             failure = replace(
                 failure,
@@ -1076,6 +1152,9 @@ def classify_message_facts(
     if normalized_role == "assistant" and normalized_content_type == "text" and (
         end_turn or is_terminal_message_status(normalized_status)
     ) and has_text:
+        tool_text_failure = classify_image_tool_text(raw_detail)
+        if tool_text_failure is not None:
+            return tool_text_failure
         return image_failure(
             "upstream_text_reply",
             raw_detail=raw_detail,

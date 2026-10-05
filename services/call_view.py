@@ -35,6 +35,8 @@ _IMAGE_FAILURE_LABELS = {
     "content_policy_violation": "内容安全策略拒绝",
     "invalid_image_input": "图片输入无效",
     "upstream_text_reply": "上游仅返回文本",
+    "image_tool_rate_limited": "生图工具触发频率限制",
+    "image_tool_upstream_error": "上游未能生成图片",
     "no_image_generated": "未生成图片",
     "unsupported_model": "模型不支持生图",
     "image_download_failed": "图片下载失败",

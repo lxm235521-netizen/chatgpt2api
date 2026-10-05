@@ -268,6 +268,11 @@ def account_row(
     user_id = _text(account.get("user_id"))
     enabled = backend_category != "disabled"
     enabled_action = "disable" if enabled else "enable"
+    cooldown_until = _timestamp_seconds(account.get("image_cooldown_until"))
+    cooldown_active = (
+        cooldown_until is not None
+        and cooldown_until > int(datetime.now(timezone.utc).timestamp())
+    )
     return {
         "id": account_id,
         "email": email,
@@ -296,6 +301,9 @@ def account_row(
         "quota_state": quota_state,
         "quota_label": quota_label,
         "quota_reset_at": _timestamp_seconds(account.get("restore_at")),
+        "image_cooldown_at": cooldown_until,
+        "image_cooldown_active": cooldown_active,
+        "image_cooldown_reason": _text(account.get("image_cooldown_reason")),
         "group_id": _text(account.get("group_id")),
         "group_name": group_name,
         "proxy": proxy,

@@ -74,6 +74,7 @@
             :settings="localSettings"
             :fields="settingsFields"
             :image-max-account-attempts-field="imageMaxAccountAttemptsField"
+            :image-account-cooldown-minutes-field="imageAccountCooldownMinutesField"
             :image-settle-seconds-field="imageSettleSecondsField"
             @set-log-level="setLogLevel"
           />
@@ -591,6 +592,14 @@ const imageMaxAccountAttemptsField = useNumberSettingField(
     enabled: () => Boolean(localSettings.value?.image_account_retry_enabled),
   },
 )
+const imageAccountCooldownMinutesField = useNumberSettingField(
+  () => localSettings.value?.image_account_cooldown_minutes,
+  (value) => {
+    if (!localSettings.value) return
+    localSettings.value.image_account_cooldown_minutes = value
+  },
+  { integer: true, metadata: () => fieldMetadata('image_account_cooldown_minutes') },
+)
 const imageSettleSecondsField = useNumberSettingField(
   () => localSettings.value?.image_settle_secs,
   (value) => {
@@ -634,6 +643,7 @@ const numberSettingFields = [
   imageAccountConcurrencyField,
   accountProcessingConcurrencyField,
   imageMaxAccountAttemptsField,
+  imageAccountCooldownMinutesField,
   imageSettleSecondsField,
   backupIntervalMinutesField,
   backupRotationKeepField,

@@ -45,7 +45,10 @@
       <QuotaBadge :account="item" />
     </td>
     <td class="py-3 pr-5 align-middle text-xs text-muted-foreground">
-      {{ accountRestoreText(item) }}
+      <div>{{ accountRestoreText(item) }}</div>
+      <div v-if="item.image_cooldown_active" class="mt-1 text-amber-600">
+        生图冷却至 {{ accountCooldownText(item) }}
+      </div>
     </td>
     <td class="py-3 pr-5 align-middle">
       <div class="font-mono text-sm tabular-nums">
@@ -80,6 +83,7 @@ import QuotaBadge from '@/components/ai/QuotaBadge.vue'
 import type { Account } from '@/api/accounts'
 import AccountCredentialStatus from './AccountCredentialStatus.vue'
 import {
+  accountCooldownText,
   accountCreatedText,
   accountPrimaryText,
   accountRestoreText,

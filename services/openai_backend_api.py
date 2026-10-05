@@ -35,6 +35,7 @@ from services.image_failure import (
     classify_task_failure,
     image_failure,
     is_terminal_message_status,
+    is_terminal_text_failure_code,
     merge_message_failure,
     structured_upstream_codes,
     terminal_assistant_text,
@@ -3131,7 +3132,7 @@ class OpenAIBackendAPI:
                         failure,
                         raw_detail=raw_detail,
                         upstream_error=(
-                            "" if failure.code == "upstream_text_reply" else raw_detail
+                            "" if is_terminal_text_failure_code(failure.code) else raw_detail
                         ),
                         raw_upstream_message=(
                             last_assistant_text if conversation_failure is not None else ""

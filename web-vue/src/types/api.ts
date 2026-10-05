@@ -80,6 +80,7 @@ export interface Settings {
   image_upscale_enabled: boolean
   image_upscale_engine: 'sharp_lanczos3' | 'pillow_lanczos'
   image_max_account_attempts: number
+  image_account_cooldown_minutes: number
   image_remove_conversation_after_result: boolean
   image_settle_enabled: boolean
   image_settle_secs: number

@@ -39,6 +39,12 @@
           :disabled="!settings.image_account_retry_enabled"
         />
       </FormField>
+      <FormField label="失败账号冷却（分钟）">
+        <template #label-extra>
+          <HelpTip text="上游以 400 文本回复“生成频率限制”或“未能生成图片”时，触发账号在此时长内不再参与生图，其他能力不受影响。默认 6，填 0 表示不冷却。" />
+        </template>
+        <SettingsNumberInput :field="imageAccountCooldownMinutesField" />
+      </FormField>
     </FormSection>
 
     <FormSection title="图片确认">
@@ -134,6 +140,7 @@ const props = defineProps<{
   settings: Settings
   fields: SettingsFields
   imageMaxAccountAttemptsField: NumberSettingField
+  imageAccountCooldownMinutesField: NumberSettingField
   imageSettleSecondsField: NumberSettingField
 }>()
 

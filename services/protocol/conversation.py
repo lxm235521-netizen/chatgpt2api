@@ -34,6 +34,7 @@ from services.image_failure import (
     image_failure,
     is_terminal_message_status,
     image_failure_priority,
+    is_terminal_text_failure_code,
     merge_message_failure,
     public_image_error_message,
     terminal_assistant_text,
@@ -966,7 +967,7 @@ def update_conversation_state(
     )
     if (
         candidate_failure is not None
-        and candidate_failure.code == "upstream_text_reply"
+        and is_terminal_text_failure_code(candidate_failure.code)
         and not classify_terminal_text_as_image_failure
     ):
         candidate_failure = None
@@ -1525,7 +1526,7 @@ def _recover_after_image_stream_timeout(
             conversation_id=conversation_id,
             raw_error=raw_error,
             upstream_error=(
-                "" if terminal_failure.code == "upstream_text_reply" else failure_detail
+                "" if is_terminal_text_failure_code(terminal_failure.code) else failure_detail
             ),
             raw_upstream_message=terminal_upstream_text,
         )
@@ -1742,7 +1743,7 @@ def stream_image_outputs(
     )
     is_text_reply = bool(
         stream_failure is not None
-        and stream_failure.code == "upstream_text_reply"
+        and is_terminal_text_failure_code(stream_failure.code)
     )
     conversation_stream_ms = int((time.perf_counter() - conversation_stream_started) * 1000)
     http_timing = _backend_http_timing_data(backend)

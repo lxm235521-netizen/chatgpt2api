@@ -63,6 +63,7 @@ _MANAGED_TOP_LEVEL_FIELDS = (
     "image_upscale_enabled",
     "image_upscale_engine",
     "image_max_account_attempts",
+    "image_account_cooldown_minutes",
     "image_remove_conversation_after_result",
     "image_settle_enabled",
     "image_settle_secs",
@@ -252,6 +253,7 @@ _FIELD_SPECS: dict[str, dict[str, Any]] = {
     "image_upscale_enabled": _field_metadata(False),
     "image_upscale_engine": _field_metadata("sharp_lanczos3", options=("sharp_lanczos3", "pillow_lanczos")),
     "image_max_account_attempts": _numeric_field_metadata("image_max_account_attempts"),
+    "image_account_cooldown_minutes": _numeric_field_metadata("image_account_cooldown_minutes"),
     "image_remove_conversation_after_result": _field_metadata(False),
     "image_settle_enabled": _field_metadata(True),
     "image_settle_secs": _numeric_field_metadata("image_settle_secs"),
@@ -534,6 +536,10 @@ class SettingsManagementService:
             image_max_account_attempts=normalize_integer_setting(
                 "image_max_account_attempts",
                 effective.get("image_max_account_attempts"),
+            ),
+            image_account_cooldown_minutes=normalize_integer_setting(
+                "image_account_cooldown_minutes",
+                effective.get("image_account_cooldown_minutes"),
             ),
             image_remove_conversation_after_result=_bool(
                 effective.get("image_remove_conversation_after_result"),

@@ -838,6 +838,32 @@ class AccountService:
         return account.get("status") == "正常" or int(account.get("quota") or 0) > 0
 
     @classmethod
+    def _is_image_account_cooling_down(
+        cls,
+        account: dict,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Whether a pending image cooldown still keeps this account out of image work.
+
+        Kept separate from ``_is_image_account_available``: a cooling account is
+        still healthy, so it keeps its console availability and must not vanish
+        from the image model catalog.
+        """
+        until = cls._parse_time(account.get("image_cooldown_until"))
+        if until is None:
+            return False
+        return until > (now or datetime.now(timezone.utc))
+
+    @staticmethod
+    def _image_cooldown_deadline(now: datetime) -> datetime | None:
+        """Deadline for a fresh image cooldown, or None when cooling is disabled."""
+        minutes = int(config.image_account_cooldown_minutes or 0)
+        if minutes <= 0:
+            return None
+        return now + timedelta(minutes=minutes)
+
+    @classmethod
     def _is_unlimited_image_quota_account(cls, account: dict) -> bool:
         if not isinstance(account, dict) or not bool(account.get("image_quota_unknown")):
             return False
@@ -1041,6 +1067,7 @@ class AccountService:
         if derived_restore_at and not normalized.get("restore_at"):
             normalized["restore_at"] = derived_restore_at
         normalized["restore_at"] = normalized.get("restore_at") or None
+        normalized["image_cooldown_until"] = normalized.get("image_cooldown_until") or None
         normalized["success"] = int(normalized.get("success") or 0)
         normalized["fail"] = int(normalized.get("fail") or 0)
         normalized["invalid_count"] = int(normalized.get("invalid_count") or 0)
@@ -1848,6 +1875,7 @@ class AccountService:
             token
             for item in self._accounts.values()
             if self._is_image_account_available(item)
+               and not self._is_image_account_cooling_down(item)
                and self._account_matches_plan_type(item, plan_type)
                and self._account_matches_any_plan_type(item, plan_types)
                and self._account_matches_source_type(item, source_type)
@@ -2069,6 +2097,7 @@ class AccountService:
                 attempted_tokens.add(resolved)
             if (
                     self._is_image_account_available(account or {})
+                    and not self._is_image_account_cooling_down(account or {})
                     and self._account_matches_plan_type(account or {}, plan_type)
                     and self._account_matches_any_plan_type(account or {}, plan_types)
                     and self._account_matches_source_type(account or {}, source_type)
@@ -4083,6 +4112,25 @@ class AccountService:
                         next_item["status"] = "正常"
                         next_item["image_quota_unknown"] = True
                         next_item["restore_at"] = None
+                if not success and failure is not None and failure.cooldown:
+                    cooldown_until = self._image_cooldown_deadline(now)
+                    previous_until = self._parse_time(next_item.get("image_cooldown_until"))
+                    if cooldown_until is not None and (
+                        previous_until is None or cooldown_until > previous_until
+                    ):
+                        next_item["image_cooldown_until"] = cooldown_until.isoformat()
+                        next_item["image_cooldown_reason"] = failure.code
+                        next_item["image_cooldown_set_at"] = now.isoformat()
+                        log_service.add(
+                            LOG_TYPE_ACCOUNT,
+                            "image account cooled down",
+                            {
+                                "token": anonymize_token(access_token),
+                                "failure_code": failure.code,
+                                "cooldown_until": cooldown_until.isoformat(),
+                                "cooldown_minutes": config.image_account_cooldown_minutes,
+                            },
+                        )
                 if not success and failure is not None and failure.verify_account:
                     next_item["fail"] = int(next_item.get("fail") or 0) + 1
                     self._mark_remote_check_pending(

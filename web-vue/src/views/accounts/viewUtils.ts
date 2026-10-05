@@ -37,6 +37,9 @@ export function accountRowSignature(item: Account): string {
     item.quota_state,
     item.quota_label,
     item.quota_reset_at,
+    item.image_cooldown_at,
+    item.image_cooldown_active ? 1 : 0,
+    item.image_cooldown_reason,
     item.group_id,
     item.proxy_label,
     item.success_count,
@@ -135,6 +138,11 @@ export function accountRestoreText(item: Account): string {
   return formatAccountDate(item.quota_reset_at)
 }
 
+export function accountCooldownText(item: Account): string {
+  if (!item.image_cooldown_active) return ''
+  return formatAccountDate(item.image_cooldown_at)
+}
+
 export function accountStatusDetailText(
   item: Account,
   groupLabel: (groupId: string | undefined) => string,
@@ -151,6 +159,10 @@ export function accountDetailItems(item: Account) {
   return [
     { label: '创建时间', value: accountCreatedText(item) },
     { label: '恢复时间', value: accountRestoreText(item) },
+    {
+      label: '生图冷却',
+      value: item.image_cooldown_active ? `冷却中，至 ${accountCooldownText(item)}` : '未冷却',
+    },
     { label: '图片额度', value: accountQuotaText(item) },
     { label: '成功 / 失败', value: `${item.success_count || 0} / ${item.failure_count || 0}` },
   ]

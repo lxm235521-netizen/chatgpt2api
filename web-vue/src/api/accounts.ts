@@ -57,6 +57,9 @@ export interface Account {
   quota_state: AccountQuotaState
   quota_label: string
   quota_reset_at?: number | null
+  image_cooldown_at?: number | null
+  image_cooldown_active?: boolean
+  image_cooldown_reason?: string
   group_id: string
   group_name: string
   proxy: string

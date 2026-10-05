@@ -196,6 +196,7 @@ class _SettingsEditableFields(_StrictModel):
     image_upscale_enabled: bool = False
     image_upscale_engine: ImageUpscaleEngine = "sharp_lanczos3"
     image_max_account_attempts: int = _numeric_field("image_max_account_attempts")
+    image_account_cooldown_minutes: int = _numeric_field("image_account_cooldown_minutes")
     image_remove_conversation_after_result: bool = False
     image_settle_enabled: bool = True
     image_settle_secs: float = _numeric_field("image_settle_secs")

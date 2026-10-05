@@ -592,6 +592,14 @@ class ConfigStore:
         )
 
     @property
+    def image_account_cooldown_minutes(self) -> int:
+        self.reload_if_changed()
+        return normalize_integer_setting(
+            "image_account_cooldown_minutes",
+            self.data.get("image_account_cooldown_minutes"),
+        )
+
+    @property
     def image_parallel_generation(self) -> bool:
         value = self.data.get("image_parallel_generation", True)
         if isinstance(value, str):
@@ -710,6 +718,7 @@ class ConfigStore:
             data["image_upscale_enabled"] = self.image_upscale_enabled
             data["image_upscale_engine"] = self.image_upscale_engine
             data["image_max_account_attempts"] = self.image_max_account_attempts
+            data["image_account_cooldown_minutes"] = self.image_account_cooldown_minutes
             data["image_parallel_generation"] = self.image_parallel_generation
             data["image_remove_conversation_after_result"] = self.image_remove_conversation_after_result
             data["auto_remove_invalid_accounts"] = self.auto_remove_invalid_accounts
